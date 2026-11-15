@@ -38,9 +38,15 @@ that does not move, rather than a key stuck down.
 MuJoCo's built-in bindings are handled in the C++ `Simulate` class and the user
 callback is invoked **in addition to** them, not instead. So a handler that claims
 a key the viewer already uses gets both behaviours at once -- press `W` for
-"walk forward" and the scene also flips to wireframe. There is no way to intercept
-that from here, which is why the key *choice* matters and why it is left to the
-task. `mjrl.viewer.keys.KEYPAD` below is the safe set.
+"walk forward" and the scene also flips to wireframe. Once the hook is in, though,
+it decides what MuJoCo's callback sees: `reserve` names keycodes the hook keeps
+from it, so their shortcuts stop firing (`play --app` reserves the keys its
+controller reads). The very first press arrives *before* the hook exists -- the
+hook is installed from inside that press -- so its shortcut has already run; for
+a printable key, every one of whose shortcuts is a toggle, the hook hands MuJoCo
+the same key once more to flip it back. Without `reserve` the key *choice* is
+all there is, which is why it is left to the task. `mjrl.viewer.keys.KEYPAD`
+below is the safe set.
 
 ## Handlers must not raise
 
@@ -71,7 +77,8 @@ import threading
 from typing import Callable
 
 __all__ = [
-    "KEYPAD", "claim", "dispatch", "from_viewer", "handler_count", "register", "unregister",
+    "KEYPAD", "claim", "dispatch", "from_viewer", "handler_count", "register", "reserve",
+    "unregister",
 ]
 
 #: GLFW keycodes for the numeric keypad, which MuJoCo's viewer does not bind.
@@ -157,6 +164,26 @@ _KEYFUN = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ct
 _previous: dict[int, object] = {}
 _warned = False
 
+#: Keycodes the hook does not pass on to MuJoCo's callback; see `reserve`.
+_reserved: frozenset[int] = frozenset()
+
+#: GLFW's printable range -- Space, `;`, the digits and the letters. Each of
+#: MuJoCo's shortcuts on these is a toggle (a flag, a geom group, pause), so a
+#: second press undoes the first. Escape and the arrows are outside it: theirs
+#: are not toggles, and a second press would do the thing twice.
+_TOGGLES = range(32, 97)
+
+
+def reserve(keycodes) -> None:
+    """Keep these keycodes from MuJoCo's viewer: their shortcuts stop firing.
+
+    The registry's handlers still get both edges. Pass an empty collection to
+    hand every key back. Applies to windows the hook is already in and to ones
+    it goes into later.
+    """
+    global _reserved
+    _reserved = frozenset(keycodes)
+
 
 class _Glfw:
     """The two GLFW calls the hook needs, bound to the library MuJoCo's viewer
@@ -177,7 +204,7 @@ _glfw: _Glfw | None = None
 
 def _on_glfw_key(window, key, scancode, action, mods) -> None:
     previous = _previous.get(window)
-    if previous is not None:
+    if previous is not None and key not in _reserved:
         previous(window, key, scancode, action, mods)
     if action == _PRESS:
         dispatch(key, True)
@@ -222,5 +249,11 @@ def from_viewer(keycode: int) -> None:
     replaced = _glfw.set_key_callback(window, _ON_GLFW_KEY_ADDRESS)
     if replaced == _ON_GLFW_KEY_ADDRESS:
         return  # through the hook, which reports this press itself
-    _previous[window] = _KEYFUN(replaced) if replaced else None
+    previous = _previous[window] = _KEYFUN(replaced) if replaced else None
+    if previous is not None and keycode in _reserved and keycode in _TOGGLES:
+        # This press reached MuJoCo before the hook did, and toggled whatever
+        # its shortcut is; the same key once more toggles it back. Its call to
+        # `from_viewer` finds the hook in place and returns.
+        previous(window, keycode, 0, _PRESS, 0)
+        previous(window, keycode, 0, _RELEASE, 0)
     dispatch(keycode, True)

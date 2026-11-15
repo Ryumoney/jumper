@@ -81,6 +81,7 @@ def fresh(monkeypatch):
     monkeypatch.setattr(keys, "_previous", {})
     monkeypatch.setattr(keys, "_warned", False)
     monkeypatch.setattr(keys, "_handlers", [])
+    monkeypatch.setattr(keys, "_reserved", frozenset())
     monkeypatch.delenv("MJRL_KEY_DEBUG", raising=False)
     seen: list[tuple[int, bool]] = []
     keys.register(lambda code, down: seen.append((code, down)))
@@ -138,3 +139,54 @@ def test_with_no_window_current_a_press_is_a_tap_and_it_says_so(fresh, capsys) -
     keys.from_viewer(W)
     assert seen == [(W, True), (W, False)] * 2
     assert capsys.readouterr().out.count("each press is reported as a tap") == 1
+
+
+UP = 265  # outside the printable range: no toggle-back
+
+
+def _presses(viewer: Viewer, key: int) -> int:
+    return sum(1 for k, a in viewer.shortcuts if k == key and a == PRESS)
+
+
+def test_a_reserved_key_leaves_the_viewer_as_it_was(fresh) -> None:
+    """`play --app` reserves the controller's keys, so D walking right stops
+    also hiding every static geom. MuJoCo's shortcuts are toggles, so what
+    shows whether one is left flipped is the parity of the presses its
+    callback saw. The first press reaches MuJoCo before the hook exists; the
+    hook hands it the key once more, so the count is even and the scene is as
+    it was, while the handler still gets every edge.
+
+    The control group is the same holds with nothing reserved: an odd count,
+    the toggle left flipped, so the parity is a test that can fail."""
+    glfw, seen = fresh
+    keys.reserve({W, UP})
+    viewer = Viewer(glfw, keys.from_viewer)
+    viewer.hold(W, repeats=5)
+    viewer.hold(W, repeats=5)
+    viewer.hold(W, repeats=5)
+    assert seen == [(W, True), (W, False)] * 3
+    assert _presses(viewer, W) % 2 == 0, "a reserved key's shortcut was left toggled"
+    assert _presses(viewer, W) == 2, "MuJoCo saw a reserved key after the hook was in"
+
+    keys.reserve(())
+    seen.clear()
+    control = Viewer(FakeGlfw(), keys.from_viewer)
+    control.hold(W, repeats=5)
+    control.hold(W, repeats=5)
+    control.hold(W, repeats=5)
+    assert _presses(control, W) == 3, "the control group did not leave the toggle flipped"
+
+
+def test_a_reserved_key_outside_the_toggles_is_not_pressed_twice(fresh) -> None:
+    """The arrows' and Escape's shortcuts are not toggles, so a second press
+    would do the thing twice rather than undo it. A reserved arrow as the very
+    first press reaches MuJoCo once, unavoidably, and never again."""
+    glfw, seen = fresh
+    keys.reserve({W, UP})
+    viewer = Viewer(glfw, keys.from_viewer)
+    viewer.hold(UP, repeats=3)
+    viewer.hold(UP, repeats=3)
+    viewer.hold(W, repeats=3)
+    assert _presses(viewer, UP) == 1
+    assert _presses(viewer, W) == 0, "a reserved key reached MuJoCo once the hook was in"
+    assert seen == [(UP, True), (UP, False)] * 2 + [(W, True), (W, False)]

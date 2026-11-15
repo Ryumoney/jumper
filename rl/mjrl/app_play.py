@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import tempfile
 import threading
 import zipfile
@@ -486,10 +487,19 @@ class AppPlayer:
 
         # The person. Keys by the dictionary's names, from the GLFW codes the
         # viewer reports, down and up.
-        self._viewer_keys = ViewerKeys(
-            {c["glfw"]: name for name, c in vocabulary.key_codes().items()})
+        codes = {c["glfw"]: name for name, c in vocabulary.key_codes().items()}
+        self._viewer_keys = ViewerKeys(codes)
         set_aside = keys.claim(self._on_key)
         self._keys = keys
+        # The keys the controller reads stop being MuJoCo's shortcuts too -- D
+        # walking right and hiding every static geom with it is the case this
+        # is for. The modifiers stay MuJoCo's: they bind no shortcut of their
+        # own and the viewer reads them for its mouse. MJRL_VIEWER_SHORTCUTS=1
+        # keeps every shortcut, as before.
+        self._shortcuts_kept = bool(os.environ.get("MJRL_VIEWER_SHORTCUTS"))
+        if not self._shortcuts_kept:
+            keys.reserve(code for code, name in codes.items()
+                         if not name.endswith(("_alt", "_ctrl", "_shift")))
         self._pad = pad
         self._buttons = frozenset(b["name"] for b in vocabulary.load()["buttons"])
         self._tick = 0
@@ -507,6 +517,9 @@ class AppPlayer:
         print("[play]   the person: the viewer's keys"
               + (" and the gamepad" if pad is not None else ", no gamepad")
               + (f" ({set_aside} other key reader(s) set aside)" if set_aside else ""))
+        print("[play]   MuJoCo's own shortcuts: "
+              + ("kept on every key (MJRL_VIEWER_SHORTCUTS)" if self._shortcuts_kept
+                 else "off on the controller's keys; MJRL_VIEWER_SHORTCUTS=1 keeps them"))
         # The switches, the pad's and then the keyboard's: two paths since
         # 2026-09-29, a key never "the pad's A", so each is listed as itself.
         guide = json.loads(self._fsm.pad_guide())
@@ -526,6 +539,8 @@ class AppPlayer:
 
     def close(self) -> None:
         self._keys.unregister(self._on_key)
+        if not self._shortcuts_kept:
+            self._keys.reserve(())
         if self._pad is not None and hasattr(self._pad, "close"):
             self._pad.close()
 
