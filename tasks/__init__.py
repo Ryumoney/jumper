@@ -71,6 +71,7 @@ from .jumper import ripple  # noqa: F401,E402
 from .jumper import swing  # noqa: F401,E402
 from .jumper import tetrapod  # noqa: F401,E402
 from .jumper import tripod  # noqa: F401,E402
+from .jumper import stairs  # noqa: F401,E402
 
 __all__ = [
     "AssetSpec",

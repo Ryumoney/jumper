@@ -71,6 +71,10 @@ NOT_LOCOMOTION = {
     # set of its own. Set beside the four it would be measuring a leg count, not a
     # gait.
     "jumper.five_foot",
+    # Climbs a generated staircase: the ground, a forward-only command with no
+    # command ladder, a stair-height curriculum and the critic's terrain scan all
+    # differ from the four, so a comparison would measure the stairs, not a gait.
+    "jumper.stairs",
     # Stands on a swing and pumps it: no command, so none of the tracking,
     # gait-gated or curriculum terms the four share survive, and the three terms
     # it does share had to be rewritten against the deck because the floor tilts.
