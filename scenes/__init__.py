@@ -93,6 +93,15 @@ register(
     use="watching",
 )
 register(
+    id="house",
+    description="**adds a house**: a two-storey wooden 3DK terrace house at full scale; "
+                "the robot starts in the dining kitchen",
+    tags=("prop", "indoor"),
+    # A place to be in, not an instrument: no task trains against it, and its
+    # walls are something to walk around, which is what a visitor wants.
+    use="watching",
+)
+register(
     id="soft",
     description="**changes the ground**: default's look, but the feet sink into it",
     tags=("physics", "ground"),
