@@ -40,7 +40,12 @@ PHASE_OBS_NAME = "gait_phase"
 # raise the top once the curriculum saturates.
 STEP_HEIGHT_RANGE = (0.005, 0.06)
 TREAD = 0.30          # m; the robot's fore-aft stance is 0.331 m
-NUM_STEPS = 8
+# Six steps, not eight: with the heading held up the stairs, a perfect walker
+# under this task's commands reaches the landing in 71% of 20 s episodes at six
+# steps against 49% at eight (3000 simulated episodes of ideal command tracking,
+# MacBook, 2026-11-15). Promotion is the curriculum's only way up, so an
+# unreachable landing keeps the run on the flattest rows.
+NUM_STEPS = 6
 RUN_UP = 1.0          # m of flat floor before the first riser; spawn at its middle
 PATCH = (8.0, 2.0)    # m (length along the stairs, width)
 NUM_ROWS = 10         # difficulty rungs
@@ -52,7 +57,7 @@ PROMOTE_DISTANCE = RUN_UP / 2.0 + NUM_STEPS * TREAD
 
 # ── The command ────────────────────────────────────────────────────────────
 # Forward up to 0.30 m/s: over a 20 s episode up to 6 m of asked-for travel,
-# against the 2.9 m needed to reach the landing. The range has to include 0 --
+# against the 2.3 m needed to reach the landing. The range has to include 0 --
 # the operator's centred stick rests there (`operator.spans` raises otherwise) --
 # so slow commands are judged against what they asked for, in `stairs_levels`.
 LIN_VEL_X = (0.0, 0.30)
@@ -76,8 +81,11 @@ def env_cfg(asset: Path | None = None, play: bool = False) -> ManagerBasedRlEnvC
         gait_name="tripod",
         action_rate_weight=-0.1,
         pose_weight=1.0,
-        # Higher than tripod's 0.025: the swing foot has to clear a riser.
-        foot_target_height=0.05,
+        # Tripod's 0.025. A 1500-iteration Colab run (T4, 2026-11-15) at 0.05 learned
+        # to stand: commanded 0.10 m/s forward it moved -0.0009 m/s. Both foot
+        # terms charge only a foot that travels or lands, so a higher target taxes
+        # every step and leaves standing still free. Walk first, then raise it.
+        foot_target_height=0.025,
         command_lin_ceiling=0.5,
         command_ang_ceiling=0.75,
         command_lin_std_ratio=STD_LIN_RATIO,
@@ -175,6 +183,14 @@ def env_cfg(asset: Path | None = None, play: bool = False) -> ManagerBasedRlEnvC
     twist.ranges.lin_vel_y = LIN_VEL_Y
     twist.ranges.ang_vel_z = ANG_VEL_Z
     twist.rel_standing_envs = 0.05
+    # Every robot steers back to facing up the stairs (world +x). The inherited
+    # setting aimed 30% of robots at a random heading in +/-pi and gave the rest a
+    # random yaw rate, so a perfect walker reached the landing in only 16.5% of
+    # episodes (same simulation as `NUM_STEPS`). The operator still overrides yaw
+    # in replay: its command is written after the heading controller's.
+    twist.heading_command = True
+    twist.ranges.heading = (0.0, 0.0)
+    twist.rel_heading_envs = 1.0
 
     # ── 3. Curriculum: stair height only ────────────────────────────────
     cfg.curriculum = {
