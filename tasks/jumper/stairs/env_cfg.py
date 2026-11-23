@@ -85,12 +85,17 @@ def env_cfg(asset: Path | None = None, play: bool = False) -> ManagerBasedRlEnvC
         gait_reward=tripod_gait,
         gait_name="tripod",
         action_rate_weight=-0.1,
-        pose_weight=1.0,
-        # Tripod's 0.025. A 1500-iteration Colab run (T4, 2026-11-15) at 0.05 learned
-        # to stand: commanded 0.10 m/s forward it moved -0.0009 m/s. Both foot
-        # terms charge only a foot that travels or lands, so a higher target taxes
-        # every step and leaves standing still free. Walk first, then raise it.
-        foot_target_height=0.025,
+        # 0.2 rather than tripod's 1.0: lifting the body over a riser taller than
+        # its belly clearance needs joints well off the default pose.
+        pose_weight=0.2,
+        # 0.10 m: the top riser. At 0.025 the run climbed 0.06 m stairs (28 of 30
+        # tries reached the landing at iteration 2200, 2026-11-23), but a 0.10 m
+        # riser stands above the 0.089 m belly clearance measured at the standing
+        # pose, so the swing foot has to rise past it. The risk is the one a
+        # 1500-iteration Colab run (T4, 2026-11-15) hit at 0.05 with weights -4/-3:
+        # it learned to stand, since both foot terms charge only a foot that travels
+        # or lands. The foot weights are halved below against that.
+        foot_target_height=0.10,
         command_lin_ceiling=0.5,
         command_ang_ceiling=0.75,
         command_lin_std_ratio=STD_LIN_RATIO,
@@ -121,8 +126,8 @@ def env_cfg(asset: Path | None = None, play: bool = False) -> ManagerBasedRlEnvC
             "freq_hz": GAIT_FREQ_HZ,
         },
     )
-    cfg.rewards["foot_clearance"].weight = -4.0
-    cfg.rewards["foot_swing_height"].weight = -3.0
+    cfg.rewards["foot_clearance"].weight = -2.0
+    cfg.rewards["foot_swing_height"].weight = -2.0
     _pose_std = cfg.rewards["pose"].params["std_standing"]
     cfg.rewards["pose"].params["std_standing"] = {k: 2.0 * v for k, v in _pose_std.items()}
     cfg.rewards["stance_load_stand"] = RewardTermCfg(
