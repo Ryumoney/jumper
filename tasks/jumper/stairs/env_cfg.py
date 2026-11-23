@@ -35,10 +35,13 @@ PHASE_OBS_NAME = "gait_phase"
 
 # ── The staircase ──────────────────────────────────────────────────────────
 # Rise per step from row 0 to the last row. 0.005 m keeps row 0 nearly flat so
-# the gait is learned before any obstacle; 0.06 m is 56% of standing height, past
-# the built-in rough scene's hardest stair (0.048 m). A first target, not a limit:
-# raise the top once the curriculum saturates.
-STEP_HEIGHT_RANGE = (0.005, 0.06)
+# the gait is learned before any obstacle. The top was 0.06 m (56% of standing
+# height) and saturated: iteration 2200 of that run (Colab, 4096 envs) reached
+# the landing in 3 of 3 tries at 0.06 m and 28 of 30 across all ten rows (0.25
+# m/s forward, training observation noise, MacBook native replay, 2026-11-23).
+# 0.10 m is 94% of standing height (STAND_Z), so it may lie past what the body
+# can clear; the row where the curriculum settles is then the measured limit.
+STEP_HEIGHT_RANGE = (0.005, 0.10)
 TREAD = 0.30          # m; the robot's fore-aft stance is 0.331 m
 # Six steps, not eight: with the heading held up the stairs, a perfect walker
 # under this task's commands reaches the landing in 71% of 20 s episodes at six
@@ -48,7 +51,9 @@ TREAD = 0.30          # m; the robot's fore-aft stance is 0.331 m
 NUM_STEPS = 6
 RUN_UP = 1.0          # m of flat floor before the first riser; spawn at its middle
 PATCH = (8.0, 2.0)    # m (length along the stairs, width)
-NUM_ROWS = 10         # difficulty rungs
+# 16 rungs keep the rise between neighbouring rows at 0.63 cm over the wider
+# range -- the 0.61 cm the 0.06 m run climbed through; 10 would make it 1.06 cm.
+NUM_ROWS = 16         # difficulty rungs
 NUM_COLS = 8          # patches per rung; more columns = more robots per rung
 BORDER = 2.0          # m of flat border around the grid; the replay garden dresses it
 
